@@ -41,9 +41,12 @@ func (gui *Gui) handleDepSelect(g *gocui.Gui, v *gocui.View) error {
 	return nil
 }
 
-// linkPathMap returns the set of link paths of the current package's dependencies
+// linkPathMap returns the set of resolved symlink target paths from the current
+// package's node_modules. This includes both deps declared in package.json and
+// links created via `npm link <name>` that aren't in package.json.
 func (gui *Gui) linkPathMap() map[string]bool {
-	linkPathMap := map[string]bool{}
+	linkPathMap := gui.NpmManager.GetLinkedPackagePaths(gui.currentPackage())
+	// Also include deps that we already know are linked (from package.json parsing)
 	for _, dep := range gui.State.Deps {
 		if dep.Linked() {
 			linkPathMap[dep.LinkPath] = true

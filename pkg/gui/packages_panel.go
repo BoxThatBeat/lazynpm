@@ -131,18 +131,25 @@ func (gui *Gui) handleLinkPackage() error {
 		return nil
 	}
 
-	var cmdStr string
 	if selectedPkg == gui.currentPackage() {
 		return gui.surfaceError(errors.New("Cannot link a package to itself"))
 	}
 
+	var cmdStr string
 	if gui.linkPathMap()[selectedPkg.Path] {
 		cmdStr = fmt.Sprintf("npm unlink --no-save %s", selectedPkg.Config.Name)
 	} else {
-		if !selectedPkg.LinkedGlobally {
-			cmdStr = fmt.Sprintf("npm link %s", selectedPkg.Path)
-		} else {
+		if selectedPkg.LinkedGlobally {
+			// Already globally linked: just create a local symlink by name.
+			// This only writes to the local node_modules, no global write needed.
 			cmdStr = fmt.Sprintf("npm link %s", selectedPkg.Config.Name)
+		} else {
+			return gui.surfaceError(
+				fmt.Errorf(
+					"%s is not globally linked. Select it and press 'L' to globally link it first",
+					selectedPkg.Config.Name,
+				),
+			)
 		}
 	}
 
@@ -156,7 +163,9 @@ func (gui *Gui) handleGlobalLinkPackage(pkg *commands.Package) error {
 
 	var cmdStr string
 	if pkg.LinkedGlobally {
-		cmdStr = "npm unlink"
+		// In npm v7+, 'npm unlink' is an alias for 'npm uninstall' (local).
+		// To remove a global link, use 'npm rm -g <name>'.
+		cmdStr = fmt.Sprintf("npm rm -g %s", pkg.Config.Name)
 	} else {
 		cmdStr = "npm link"
 	}

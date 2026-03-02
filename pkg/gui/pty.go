@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package gui
@@ -176,7 +177,8 @@ func (gui *Gui) newPtyTask(viewName string, commandView *commands.CommandView, c
 
 		ptmx, err := pty.Start(commandView.Cmd)
 		if err != nil {
-			// swallowing for now (actually continue to swallow this)
+			gui.Log.Errorf("pty.Start error for command '%s': %v", cmdStr, err)
+			fmt.Fprint(view, utils.ColoredString(fmt.Sprintf("Error starting command: %v", err), color.FgRed))
 			return
 		}
 

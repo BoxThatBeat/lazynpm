@@ -43,10 +43,6 @@ func (m *NpmManager) IsLinked(name string, path string) (bool, error) {
 	globalPath := filepath.Join(m.NpmRoot, name)
 	fileInfo, err := os.Lstat(globalPath)
 	if err != nil {
-		if err == os.ErrNotExist {
-			return false, nil
-		}
-		// swallowing error. For some reason we're getting 'no such file or directory' here despite checking for os.ErrNotExist
 		return false, nil
 	}
 
@@ -56,7 +52,13 @@ func (m *NpmManager) IsLinked(name string, path string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if linkedPath == path {
+		// The symlink target may be relative. Resolve it against the
+		// directory containing the symlink to get an absolute path.
+		if !filepath.IsAbs(linkedPath) {
+			linkedPath = filepath.Join(filepath.Dir(globalPath), linkedPath)
+		}
+		linkedPath = filepath.Clean(linkedPath)
+		if linkedPath == filepath.Clean(path) {
 			return true, nil
 		}
 	}
@@ -172,6 +174,55 @@ func (m *NpmManager) GetDeps(currentPkg *Package, previousDeps []*Dependency) ([
 	}
 
 	return deps, nil
+}
+
+// GetLinkedPackagePaths scans node_modules for symlinked entries and returns
+// a set of their resolved absolute target paths. This catches links that
+// exist in node_modules but are not declared in package.json (e.g. created
+// via `npm link <name>`).
+func (m *NpmManager) GetLinkedPackagePaths(currentPkg *Package) map[string]bool {
+	result := map[string]bool{}
+	nodeModulesPath := filepath.Join(currentPkg.Path, "node_modules")
+
+	scanDir := func(dir string) {
+		entries, err := ioutil.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, entry := range entries {
+			if entry.Mode()&os.ModeSymlink == 0 {
+				continue
+			}
+			fullPath := filepath.Join(dir, entry.Name())
+			resolved, err := filepath.EvalSymlinks(fullPath)
+			if err != nil {
+				continue
+			}
+			result[resolved] = true
+		}
+	}
+
+	// Scan top-level entries in node_modules
+	entries, err := ioutil.ReadDir(nodeModulesPath)
+	if err != nil {
+		return result
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, "@") {
+			// Scoped package: scan the scope directory for symlinked packages
+			scanDir(filepath.Join(nodeModulesPath, name))
+		} else if entry.Mode()&os.ModeSymlink != 0 {
+			fullPath := filepath.Join(nodeModulesPath, name)
+			resolved, err := filepath.EvalSymlinks(fullPath)
+			if err != nil {
+				continue
+			}
+			result[resolved] = true
+		}
+	}
+
+	return result
 }
 
 func (m *NpmManager) GetTarballs(currentPkg *Package) ([]*Tarball, error) {

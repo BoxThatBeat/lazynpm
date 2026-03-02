@@ -176,7 +176,7 @@ func GetKeyDisplay(key interface{}) string {
 		keyInt = int(key)
 	}
 
-	return string(keyInt)
+	return string(rune(keyInt))
 }
 
 func (gui *Gui) getKey(name string) interface{} {
